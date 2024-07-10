@@ -74,5 +74,17 @@ df = pd.merge(df, avg_price_per_neighborhood, on='neighbourhood', how='left')
 
 # Handle missing values
 df.fillna({'reviews_per_month': 0}, inplace=True)
+# Calculate the number of listings per host
+listings_per_host = df.groupby('host_id')['id'].count().reset_index()
+listings_per_host.rename(columns={'id': 'listings_count'}, inplace=True)
+
+# Merge the new metrics back into the original DataFrame
+df = pd.merge(df, listings_per_host, on='host_id', how='left')
+
+# Categorize listings by price range
+price_bins = [0, 100, 300, float('inf')]
+price_labels = ['Low', 'Medium', 'High']
+df['price_range'] = pd.cut(df['price'], bins=price_bins, labels=price_labels, include_lowest=True)
+
 
 print("Data transformation completed successfully!")
