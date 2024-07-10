@@ -1,0 +1,111 @@
+import pandas as pd
+from sqlalchemy import create_engine, text
+
+# Database connection parameters
+db_params = {
+    'database': 'airbnb_nyc',
+    'user': 'postgres',
+    'password': 'Rohit5363',
+    'host': 'localhost',
+    'port': '5432'
+}
+
+# Create SQLAlchemy engine
+engine = create_engine(f"postgresql+psycopg2://{db_params['user']}:{db_params['password']}@{db_params['host']}:{db_params['port']}/{db_params['database']}")
+
+# Create table schema
+create_table_query = """
+CREATE TABLE IF NOT EXISTS airbnb_listings (
+    id SERIAL PRIMARY KEY,
+    name TEXT,
+    host_id INTEGER,
+    host_name TEXT,
+    neighbourhood_group TEXT,
+    neighbourhood TEXT,
+    latitude DECIMAL,
+    longitude DECIMAL,
+    room_type TEXT,
+    price INTEGER,
+    minimum_nights INTEGER,
+    number_of_reviews INTEGER,
+    last_review DATE,
+    reviews_per_month DECIMAL,
+    calculated_host_listings_count INTEGER,
+    availability_365 INTEGER
+);
+"""
+
+# Execute create table query
+with engine.connect() as connection:
+    connection.execute(text(create_table_query))
+
+print("Table created successfully!")
+#__________________________________________
+#data loading
+# Read the CSV file
+csv_file_path = r'C:\Users\rk585\OneDrive\Desktop\AB_NYC_2019.csv'
+df = pd.read_csv(csv_file_path , encoding='latin') #encoded with latin because of presence of non-UTF-8 encoded characters in the CSV file.
+
+# Load data into the PostgreSQL table
+df.to_sql('airbnb_listings', engine, if_exists='replace', index=False, method='multi')
+
+print("Data loaded successfully!")
+#________________extraction, transformation, loading
+df.info()
+# Extract data using SQLAlchemy
+with engine.connect() as connection:
+    df = pd.read_sql('SELECT * FROM airbnb_listings', connection)
+
+print("Data extracted successfully!")
+#transform the data
+# Normalize the date column
+df['last_review_date'] = pd.to_datetime(df['last_review'],dayfirst=True).dt.date
+df['last_review_time'] = pd.to_datetime(df['last_review'],dayfirst=True).dt.time
+df.drop(columns=['last_review'], inplace=True)
+
+# Calculate additional metrics (e.g., average price per neighborhood)
+avg_price_per_neighborhood = df.groupby('neighbourhood')['price'].mean().reset_index()
+avg_price_per_neighborhood.rename(columns={'price': 'avg_price'}, inplace=True)
+
+# Merge the new metrics back into the original DataFrame
+df = pd.merge(df, avg_price_per_neighborhood, on='neighbourhood', how='left')
+
+# Handle missing values
+df.fillna({'reviews_per_month': 0}, inplace=True)
+
+print("Data transformation completed successfully!")
+#_______________________
+#dataloading to new data frame
+# Create a new table for the transformed data
+create_transformed_table_query = """
+CREATE TABLE IF NOT EXISTS airbnb_listings_transformed (
+    id SERIAL PRIMARY KEY,
+    name TEXT,
+    host_id INTEGER,
+    host_name TEXT,
+    neighbourhood_group TEXT,
+    neighbourhood TEXT,
+    latitude DECIMAL,
+    longitude DECIMAL,
+    room_type TEXT,
+    price INTEGER,
+    minimum_nights INTEGER,
+    number_of_reviews INTEGER,
+    reviews_per_month DECIMAL,
+    calculated_host_listings_count INTEGER,
+    availability_365 INTEGER,
+    last_review_date DATE,
+    last_review_time TIME,
+    avg_price DECIMAL
+);
+"""
+
+# Execute create table query for the transformed data
+with engine.connect() as connection:
+    connection.execute(text(create_transformed_table_query))
+
+# Load transformed data into the new table
+df.to_sql('airbnb_listings_transformed', engine, if_exists='replace', index=False, method='multi')
+
+print("Transformed data loaded successfully!")
+
